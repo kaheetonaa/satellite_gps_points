@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Draw a Circle</title>
+    <meta property="og:description" content="Draw a radius to approximate a location with Turf.js" />
+    <meta charset='utf-8'>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel='stylesheet' href='https://unpkg.com/maplibre-gl@5.0.1/dist/maplibre-gl.css' />
+    <script src='https://unpkg.com/maplibre-gl@5.0.1/dist/maplibre-gl.js'></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body,
+        #map {
+            height: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+    <div id="map"></div>
+    <script>
+        //fetch('https://five.epicollect.net/api/export/entries/satellite?form_ref=a8a51427b85c4277adc1ab1f92b3f59c_678632be81b81').then((response)=>console.log(response.JSON())
+        fetch("https://five.epicollect.net/api/export/entries/satellite?form_ref=a8a51427b85c4277adc1ab1f92b3f59c_678632be81b81")
+            .then((response) => response.json())
+            .then((data) => {
+                const MAPTILER_KEY = 'LNYmt0VUZ6v0kH5DVUYX';
+                let entries = data['data']['entries']
+                let points = [];
+                let collection = []
+                const options = {
+                        steps: 32,
+                        units: 'meters'
+                    };
+                let radius;
+                let radiusCenter;
+                for (let i in entries) {
+                    radius = entries[i]['1_inserisci_qui_la_t']['accuracy']; // kilometer
+                    radiusCenter=[entries[i]['1_inserisci_qui_la_t']['longitude'], entries[i]['1_inserisci_qui_la_t']['latitude']]
+                    console.log(entries[i])
+                    points.push(radiusCenter);
+                    collection.push(turf.circle(radiusCenter, radius, options))
+                }
+
+                var line = turf.lineString(points);
+                var bbox = turf.bbox(line);
+                console.log(bbox)
+                var bboxPolygon = turf.bboxPolygon(bbox);
+
+
+                const map = new maplibregl.Map({
+                    container: 'map',
+                    zoom: 13,
+                    bounds: bbox,
+                    style: {
+                        version: 8,
+                        sources: {
+                            osm: {
+                                type: 'raster',
+                                tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                                tileSize: 256,
+                                attribution: '&copy; OpenStreetMap Contributors',
+                                maxzoom: 19
+                            }
+                        },
+                        layers: [
+                            {
+                                id: 'osm',
+                                type: 'raster',
+                                source: 'osm'
+                            }
+                        ]
+                    },
+                    maxZoom: 18,
+                    pitch: 60,
+                    maxPitch: 85
+                });
+                //map.fitBounds(bbox)
+
+                map.on('load', () => {
+                    // Generate a polygon using turf.circle
+                    // See https://turfjs.org/docs/#circle
+
+                    const layers = map.getStyle().layers;
+
+                    let labelLayerId;
+                    for (let i = 0; i < layers.length; i++) {
+                        if (layers[i].type === 'symbol' && layers[i].layout['text-field']) {
+                            labelLayerId = layers[i].id;
+                            break;
+                        }
+                    }
+
+                    map.addSource('openmaptiles', {
+                        url: `https://api.maptiler.com/tiles/v3/tiles.json?key=${MAPTILER_KEY}`,
+                        type: 'vector',
+                    });
+
+                    map.addLayer(
+                        {
+                            'id': '3d-buildings',
+                            'source': 'openmaptiles',
+                            'source-layer': 'building',
+                            'type': 'fill-extrusion',
+                            'minzoom': 15,
+                            'filter': ['!=', ['get', 'hide_3d'], true],
+                            'paint': {
+                                'fill-extrusion-opacity': 0.3,
+                                'fill-extrusion-color': [
+                                    'interpolate',
+                                    ['linear'],
+                                    ['get', 'render_height'], 0, 'lightgray', 200, 'royalblue', 400, 'lightblue'
+                                ],
+                                'fill-extrusion-height': [
+                                    'interpolate',
+                                    ['linear'],
+                                    ['zoom'],
+                                    15,
+                                    0,
+                                    16,
+                                    ['get', 'render_height']
+                                ],
+                                'fill-extrusion-base': ['case',
+                                    ['>=', ['get', 'zoom'], 16],
+                                    ['get', 'render_min_height'], 0
+                                ]
+                            }
+                        },
+                        labelLayerId
+                    );
+
+
+                    const circle = turf.featureCollection(collection);
+
+                    // Add the circle as a GeoJSON source
+                    map.addSource('location-radius', {
+                        type: 'geojson',
+                        data: circle
+                    });
+
+                    // Add a fill layer with some transparency
+                    map.addLayer({
+                        id: 'location-radius',
+                        type: 'fill',
+                        source: 'location-radius',
+                        paint: {
+                            'fill-color': '#8CCFFF',
+                            'fill-opacity': 0.5
+                        }
+                    });
+
+                    // Add a line layer to draw the circle outline
+                    map.addLayer({
+                        id: 'location-radius-outline',
+                        type: 'line',
+                        source: 'location-radius',
+                        paint: {
+                            'line-color': '#0094ff',
+                            'line-width': 3
+                        }
+                    });
+                });
+
+
+
+
+
+            })
+
+    </script>
+</body>
+
+</html>
